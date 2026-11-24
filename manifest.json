@@ -1,0 +1,21 @@
+{
+  "name": "MatdisMaster - Matematika Diskrit Android App",
+  "short_name": "MatdisMaster",
+  "description": "Aplikasi belajar Matematika Diskrit lengkap per sub-bab, ringkasan rumus, latihan soal & pembahasan, serta game edukasi interaktif untuk Android & Web.",
+  "start_url": "./Matematika%20Diskrit.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0F172A",
+  "theme_color": "#4F46E5",
+  "lang": "id",
+  "categories": ["education", "utilities", "games"],
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
