@@ -7342,8 +7342,9 @@ def bfs(G, s):
         <p class="hero-desc">Rangkuman super lengkap dari Bab 1 sampai Bab 19: Himpunan, Sifat Relasi, Fungsi &amp;
           Invers, Hukum Logika &amp; De Morgan, Kuantor, Permutasi, Kombinasi, Pohon, Graf, Kompleksitas, Peluang Bayes, hingga Otomata!</p>
         <div class="no-print" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;">
-          <button type="button" class="btn btn-primary" id="printRumusPdfBtn">🖨️ Cetak / Simpan PDF Rumus (24 Kartu)</button>
-          <button type="button" class="btn btn-secondary" id="printAllSummaryPdfBtn">📚 Cetak / Simpan PDF Ringkasan Lengkap (Bab 1–19 + Rumus)</button>
+          <button type="button" class="btn btn-primary" id="printRumusPdfBtn">⬇️ Unduh File PDF Rumus (24 Kartu)</button>
+          <button type="button" class="btn btn-secondary" id="printAllSummaryPdfBtn">⬇️ Unduh File PDF Ringkasan Lengkap (Bab 1–19 + Rumus)</button>
+          <button type="button" class="btn btn-secondary" id="browserPrintRumusBtn">🖨️ Print Browser</button>
         </div>
       </section>
 
@@ -16017,7 +16018,7 @@ document.addEventListener('DOMContentLoaded', () => {
       loadG6();
     })();
 
-    // ---------------- CETAK / SIMPAN PDF (RINGKASAN & RUMUS) ----------------
+    // ---------------- DIRECT DOWNLOAD PDF GENERATOR (OFFLINE PURE JS — LANGSUNG SIMPAN KE FILE ANDROID) ----------------
     (function initPdfPrintControls() {
       const cleanup = () => {
         document.body.classList.remove('print-mode-rumus', 'print-mode-all');
@@ -16026,37 +16027,303 @@ document.addEventListener('DOMContentLoaded', () => {
 
       window.triggerPdfPrint = (mode = 'current') => {
         cleanup();
-        if (mode === 'rumus') {
-          document.body.classList.add('print-mode-rumus');
-        } else if (mode === 'all') {
-          document.body.classList.add('print-mode-all');
-        }
-        setTimeout(() => {
-          window.print();
-          setTimeout(cleanup, 1200);
-        }, 60);
+        if (mode === 'rumus') document.body.classList.add('print-mode-rumus');
+        else if (mode === 'all') document.body.classList.add('print-mode-all');
+        setTimeout(() => { window.print(); setTimeout(cleanup, 1200); }, 60);
       };
 
+      // Sanitize Unicode math symbols into crisp WinAnsi/ASCII for standard Helvetica PDF fonts
+      function sanitizePdfText(str) {
+        if (!str) return '';
+        const map = {
+          '∀': 'for all ', '∃': 'exists ', '∈': ' in ', '∉': ' not in ', '⊆': ' <= ', '⊂': ' < ',
+          '∪': ' U ', '∩': ' n ', '∅': 'empty', '¬': '~', '∧': ' AND ', '∨': ' OR ', '⊕': ' XOR ',
+          '→': ' -> ', '←': ' <- ', '⇒': ' => ', '⇔': ' <=> ', '↔': ' <-> ', '≡': ' === ',
+          '≠': ' != ', '≤': ' <= ', '≥': ' >= ', '≈': ' ~= ', '×': ' x ', '·': ' * ', '÷': ' / ',
+          '−': '-', '–': '-', '—': '--', '±': '+/-', '∞': 'inf', '√': 'sqrt',
+          '∑': 'Sigma', '∏': 'Prod', 'Ω': 'Omega', 'Θ': 'Theta', 'χ': 'chi', 'δ': 'delta',
+          'ε': 'eps', 'λ': 'lambda', 'σ': 'sigma', 'π': 'pi', 'Σ': 'Sigma',
+          '⁰': '^0', '¹': '^1', '²': '^2', '³': '^3', '⁴': '^4', '⁵': '^5', '⁶': '^6', '⁷': '^7', '⁸': '^8', '⁹': '^9', 'ⁿ': '^n', 'ᵐ': '^m', 'ᵏ': '^k', 'ⁱ': '^i',
+          '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+          '•': '-', '◦': '-', '▪': '-', '✓': '[OK]', '✔': '[OK]', '✕': '[X]', '❌': '[X]', '✅': '[OK]',
+          '“': '"', '”': '"', '‘': "'", '’': "'", '…': '...', '½': '1/2', '¼': '1/4', '¾': '3/4',
+          '\u00a0': ' ', '\u200b': ''
+        };
+        let out = '';
+        for (const ch of String(str)) {
+          if (map[ch] !== undefined) out += map[ch];
+          else if (ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) <= 126) out += ch;
+          else if (ch === '\n' || ch === '\t') out += ' ';
+        }
+        return out.replace(/\s+/g, ' ').trim();
+      }
+
+      function escapePdfStr(s) {
+        return s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+      }
+
+      function wrapLines(text, maxChars) {
+        const clean = sanitizePdfText(text);
+        if (!clean) return [];
+        const words = clean.split(' ');
+        const lines = [];
+        let cur = '';
+        for (const w of words) {
+          if (!cur) { cur = w; }
+          else if ((cur + ' ' + w).length <= maxChars) { cur += ' ' + w; }
+          else { lines.push(cur); cur = w; }
+        }
+        if (cur) lines.push(cur);
+        return lines;
+      }
+
+      // Build valid multi-page PDF 1.4 binary Uint8Array from structured blocks
+      function buildPdfBytes(docTitle, blocks) {
+        const PW = 595, PH = 842, ML = 42, MR = 42, MT = 56, MB = 48;
+        const CW = PW - ML - MR;
+        const pages = [];
+        let cmds = [];
+        let y = PH - MT;
+
+        const startPage = () => {
+          cmds = [];
+          // Top thin header line
+          cmds.push('0.31 0.27 0.90 rg');
+          cmds.push(`${ML} ${PH - 30} ${CW} 2 re f`);
+          cmds.push('0.40 0.45 0.55 rg');
+          cmds.push(`BT /F2 8 Tf ${ML} ${PH - 24} Td (${escapePdfStr(sanitizePdfText(docTitle))}) Tj ET`);
+          y = PH - MT;
+        };
+
+        const ensureSpace = (needed) => {
+          if (y - needed < MB) {
+            pages.push(cmds);
+            startPage();
+          }
+        };
+
+        startPage();
+
+        // Main Cover Banner on Page 1
+        cmds.push('0.31 0.27 0.90 rg');
+        cmds.push(`${ML} ${y - 44} ${CW} 44 re f`);
+        cmds.push('1 1 1 rg');
+        cmds.push(`BT /F2 14 Tf ${ML + 14} ${y - 20} Td (${escapePdfStr(sanitizePdfText(docTitle))}) Tj ET`);
+        cmds.push(`BT /F1 9 Tf ${ML + 14} ${y - 35} Td (MatdisMaster - Rangkuman & Rumus Matematika Diskrit IF1220) Tj ET`);
+        y -= 58;
+
+        for (const blk of blocks) {
+          if (blk.type === 'chapter') {
+            if (y < PH - MT - 80) { pages.push(cmds); startPage(); }
+            const titleLines = wrapLines(blk.title, 66);
+            const boxH = 16 + titleLines.length * 15;
+            ensureSpace(boxH + 10);
+            cmds.push('0.93 0.95 1.00 rg');
+            cmds.push(`${ML} ${y - boxH} ${CW} ${boxH} re f`);
+            cmds.push('0.31 0.27 0.90 rg');
+            cmds.push(`${ML} ${y - boxH} 4 ${boxH} re f`);
+            cmds.push('0.12 0.11 0.29 rg');
+            titleLines.forEach((ln, idx) => {
+              cmds.push(`BT /F2 12 Tf ${ML + 12} ${y - 16 - idx * 15} Td (${escapePdfStr(ln)}) Tj ET`);
+            });
+            y -= (boxH + 8);
+          } else if (blk.type === 'h2') {
+            const lines = wrapLines(blk.text, 76);
+            ensureSpace(lines.length * 14 + 10);
+            cmds.push('0.18 0.20 0.45 rg');
+            lines.forEach((ln) => {
+              cmds.push(`BT /F2 10.5 Tf ${ML} ${y - 11} Td (${escapePdfStr(ln)}) Tj ET`);
+              y -= 14;
+            });
+            y -= 2;
+          } else if (blk.type === 'formula') {
+            const rawLines = String(blk.text || '').split('\n').flatMap((l) => wrapLines(l, 78));
+            if (!rawLines.length) continue;
+            const lh = 12.5;
+            const pad = 8;
+            // Split long formula boxes across pages if needed
+            let idx = 0;
+            while (idx < rawLines.length) {
+              const availLines = Math.max(2, Math.floor((y - MB - pad * 2) / lh));
+              if (availLines < 2) { pages.push(cmds); startPage(); continue; }
+              const chunk = rawLines.slice(idx, idx + availLines);
+              const bh = chunk.length * lh + pad * 2;
+              cmds.push('0.96 0.97 0.99 rg');
+              cmds.push(`${ML} ${y - bh} ${CW} ${bh} re f`);
+              cmds.push('0.31 0.27 0.90 rg');
+              cmds.push(`${ML} ${y - bh} 3 ${bh} re f`);
+              cmds.push('0.08 0.10 0.18 rg');
+              chunk.forEach((ln, ci) => {
+                cmds.push(`BT /F1 9.2 Tf ${ML + 10} ${y - pad - 9 - ci * lh} Td (${escapePdfStr(ln)}) Tj ET`);
+              });
+              y -= (bh + 6);
+              idx += chunk.length;
+              if (idx < rawLines.length) { pages.push(cmds); startPage(); }
+            }
+          } else if (blk.type === 'text') {
+            const lines = wrapLines(blk.text, 88);
+            const lh = 12.5;
+            for (const ln of lines) {
+              ensureSpace(lh + 2);
+              cmds.push('0.12 0.16 0.23 rg');
+              cmds.push(`BT /F1 9.3 Tf ${ML + (blk.indent || 0)} ${y - 10} Td (${escapePdfStr(ln)}) Tj ET`);
+              y -= lh;
+            }
+            y -= 3;
+          }
+        }
+        pages.push(cmds);
+
+        // Add page numbers to footer of each page
+        const totalP = pages.length;
+        pages.forEach((pCmds, pi) => {
+          pCmds.push('0.45 0.50 0.60 rg');
+          pCmds.push(`BT /F1 8 Tf ${PW - MR - 70} 26 Td (Halaman ${pi + 1} / ${totalP}) Tj ET`);
+          pCmds.push(`BT /F1 8 Tf ${ML} 26 Td (MatdisMaster Offline PDF) Tj ET`);
+        });
+
+        // Assemble PDF objects
+        const objects = [];
+        const addObj = (body) => { objects.push(body); return objects.length; };
+        const font1Id = addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+        const font2Id = addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+        const pagesId = addObj(''); // placeholder
+        const pageIds = [];
+
+        for (const pCmds of pages) {
+          const stream = pCmds.join('\n');
+          const contentId = addObj(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+          const pageId = addObj(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /Font << /F1 ${font1Id} 0 R /F2 ${font2Id} 0 R >> >> /Contents ${contentId} 0 R >>`);
+          pageIds.push(pageId);
+        }
+
+        objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+        const catalogId = addObj(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
+
+        let pdf = '%PDF-1.4\n';
+        const offsets = [0];
+        for (let i = 0; i < objects.length; i++) {
+          offsets.push(pdf.length);
+          pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+        }
+        const xrefPos = pdf.length;
+        pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+        for (let i = 1; i <= objects.length; i++) {
+          pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+        }
+        pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
+
+        const bytes = new Uint8Array(pdf.length);
+        for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
+        return bytes;
+      }
+
+      function downloadPdfFile(filename, docTitle, blocks) {
+        try {
+          const bytes = buildPdfBytes(docTitle, blocks);
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }, 1500);
+          if (typeof showToast === 'function') showToast(`File "${filename}" berhasil diunduh ke folder Download! 📄✅`);
+        } catch (err) {
+          console.error('PDF export error:', err);
+          if (typeof showToast === 'function') showToast('Gagal membuat file PDF langsung, membuka Print Browser...');
+          window.triggerPdfPrint('current');
+        }
+      }
+
+      function extractRumusBlocks() {
+        const blocks = [{ type: 'chapter', title: 'CHEAT SHEET 24 KARTU RUMUS MATEMATIKA DISKRIT (BAB 1 - 19)' }];
+        document.querySelectorAll('#formulaGrid .formula-card').forEach((card, idx) => {
+          const bab = card.querySelector('.chapter-num')?.textContent?.trim() || '';
+          const h3 = card.querySelector('h3')?.textContent?.trim() || '';
+          const box = card.querySelector('.formula-box');
+          const rawHtml = box ? box.innerHTML.replace(/<br\s*\/?>/gi, '\n') : '';
+          const tmp = document.createElement('div');
+          tmp.innerHTML = rawHtml;
+          blocks.push({ type: 'h2', text: `${idx + 1}. ${h3} (${bab})` });
+          blocks.push({ type: 'formula', text: tmp.textContent || '' });
+        });
+        return blocks;
+      }
+
+      function extractChapterBlocks(viewEl) {
+        if (!viewEl) return [];
+        const blocks = [];
+        const h1 = viewEl.querySelector('.hero-title')?.textContent?.trim() || viewEl.id;
+        const badge = viewEl.querySelector('.hero-badge')?.textContent?.trim() || '';
+        const desc = viewEl.querySelector('.hero-desc')?.textContent?.trim() || '';
+        blocks.push({ type: 'chapter', title: `${badge ? badge + ' | ' : ''}${h1}` });
+        if (desc) blocks.push({ type: 'text', text: desc });
+
+        viewEl.querySelectorAll(':scope > section.card').forEach((card) => {
+          if (card.id === 'flashcardCardBox') return;
+          const h2 = card.querySelector('h2')?.textContent?.trim();
+          if (h2) blocks.push({ type: 'h2', text: h2 });
+
+          card.querySelectorAll('h3, p, .formula-box, li, .callout, .quiz-q, .solution-box').forEach((el) => {
+            if (el.closest('button') || el.closest('.no-print')) return;
+            const tag = el.tagName.toLowerCase();
+            if (el.classList.contains('formula-box')) {
+              const tmp = document.createElement('div');
+              tmp.innerHTML = el.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+              blocks.push({ type: 'formula', text: tmp.textContent || '' });
+            } else if (tag === 'h3') {
+              blocks.push({ type: 'h2', text: el.textContent.trim() });
+            } else if (tag === 'li') {
+              blocks.push({ type: 'text', text: '- ' + el.textContent.trim(), indent: 8 });
+            } else if (el.classList.contains('quiz-q')) {
+              blocks.push({ type: 'text', text: '[Contoh Soal] ' + el.textContent.trim() });
+            } else if (el.classList.contains('solution-box')) {
+              blocks.push({ type: 'formula', text: '[Pembahasan] ' + el.textContent.trim() });
+            } else if (el.textContent.trim().length > 2) {
+              blocks.push({ type: 'text', text: el.textContent.trim() });
+            }
+          });
+        });
+        return blocks;
+      }
+
       document.getElementById('printRumusPdfBtn')?.addEventListener('click', () => {
-        if (typeof showToast === 'function') showToast('Menyiapkan PDF 24 Kartu Rumus — pilih "Save as PDF" 🖨️');
-        window.triggerPdfPrint('rumus');
+        downloadPdfFile('MatdisMaster-24-Rumus.pdf', 'Ringkasan 24 Kartu Rumus Matematika Diskrit', extractRumusBlocks());
       });
 
       document.getElementById('printAllSummaryPdfBtn')?.addEventListener('click', () => {
-        if (typeof showToast === 'function') showToast('Menyiapkan PDF Ringkasan Bab 1–19 + Rumus — pilih "Save as PDF" 📚');
-        window.triggerPdfPrint('all');
+        const allBlocks = [];
+        for (let b = 1; b <= 19; b++) {
+          const el = document.getElementById(`view-bab${b}`);
+          if (el) allBlocks.push(...extractChapterBlocks(el));
+        }
+        allBlocks.push(...extractRumusBlocks());
+        downloadPdfFile('MatdisMaster-Ringkasan-Lengkap-Bab1-19.pdf', 'Ringkasan Lengkap Bab 1-19 & 24 Rumus Matdis', allBlocks);
       });
 
-      // Tambahkan tombol "Cetak PDF Bab Ini" di setiap footer sub-bab (Bab 1–19)
+      document.getElementById('browserPrintRumusBtn')?.addEventListener('click', () => {
+        window.triggerPdfPrint('rumus');
+      });
+
+      // Tambahkan tombol "Unduh PDF Bab Ini" langsung ke file di setiap footer sub-bab (Bab 1–19)
       document.querySelectorAll('.chapter-footer-nav').forEach((nav) => {
         if (nav.querySelector('.print-chapter-pdf-btn')) return;
+        const parentSec = nav.closest('.spa-view');
+        const babId = parentSec ? parentSec.id.replace('view-', '') : 'bab';
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-secondary print-chapter-pdf-btn';
-        btn.textContent = '🖨️ Cetak PDF Bab Ini';
+        btn.textContent = '⬇️ Unduh PDF Bab Ini';
         btn.addEventListener('click', () => {
-          if (typeof showToast === 'function') showToast('Menyiapkan PDF bab ini — pilih "Save as PDF" 🖨️');
-          window.triggerPdfPrint('current');
+          const blocks = extractChapterBlocks(parentSec);
+          const title = parentSec?.querySelector('.hero-title')?.textContent?.trim() || babId.toUpperCase();
+          downloadPdfFile(`MatdisMaster-${babId.toUpperCase()}.pdf`, `${babId.toUpperCase()} - ${title}`, blocks);
         });
         nav.appendChild(btn);
       });

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'matdismaster-v5';
+const CACHE_NAME = 'matdismaster-v6';
 const ASSETS = [
   './',
   './Matematika%20Diskrit.html',
