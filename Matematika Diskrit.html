@@ -1535,6 +1535,119 @@
       }
     }
 
+    /* ---------------- PRINT / EXPORT PDF (A4 Clean Mode) ---------------- */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 14mm 12mm;
+      }
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
+      html, body {
+        background: #ffffff !important;
+        background-image: none !important;
+        color: #0f172a !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        font-size: 10.5pt !important;
+        line-height: 1.45 !important;
+      }
+      .topbar, .drawer, .drawer-backdrop, .bottom-nav, .math-bg-layer,
+      .chapter-footer-nav, .modal-backdrop, .toast, .no-print,
+      #flashcardCardBox, #formulaFilters, #formulaSearch,
+      .solution-toggle, button, input, select, textarea {
+        display: none !important;
+      }
+      main.container {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .spa-view { display: none !important; }
+      .spa-view.active { display: block !important; }
+
+      body.print-mode-rumus .spa-view { display: none !important; }
+      body.print-mode-rumus #view-rumus { display: block !important; }
+      body.print-mode-rumus .formula-card { display: block !important; }
+
+      body.print-mode-all .spa-view { display: none !important; }
+      body.print-mode-all #view-bab1,
+      body.print-mode-all #view-bab2,
+      body.print-mode-all #view-bab3,
+      body.print-mode-all #view-bab4,
+      body.print-mode-all #view-bab5,
+      body.print-mode-all #view-bab6,
+      body.print-mode-all #view-bab7,
+      body.print-mode-all #view-bab8,
+      body.print-mode-all #view-bab9,
+      body.print-mode-all #view-bab10,
+      body.print-mode-all #view-bab11,
+      body.print-mode-all #view-bab12,
+      body.print-mode-all #view-bab13,
+      body.print-mode-all #view-bab14,
+      body.print-mode-all #view-bab15,
+      body.print-mode-all #view-bab16,
+      body.print-mode-all #view-bab17,
+      body.print-mode-all #view-bab18,
+      body.print-mode-all #view-bab19,
+      body.print-mode-all #view-rumus {
+        display: block !important;
+        page-break-after: always;
+        break-after: page;
+      }
+      body.print-mode-all #view-rumus {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      body.print-mode-all .formula-card { display: block !important; }
+
+      .hero-card {
+        background: #eef2ff !important;
+        color: #1e1b4b !important;
+        border: 1.5px solid #c7d2fe !important;
+        padding: 14px 18px !important;
+        margin-bottom: 12px !important;
+        break-inside: avoid;
+      }
+      .hero-card .hero-title, .hero-card .hero-desc, .hero-card .hero-badge {
+        color: #1e1b4b !important;
+      }
+      .card, .formula-card, .formula-box, .callout, .quiz-item {
+        background: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        color: #0f172a !important;
+        padding: 12px 14px !important;
+        margin-bottom: 10px !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .formula-box {
+        background: #f8fafc !important;
+        border-left: 3.5px solid #4f46e5 !important;
+      }
+      .grid-2 {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 10px !important;
+      }
+      .solution-box {
+        display: block !important;
+        background: #f8fafc !important;
+        border: 1px solid #cbd5e1 !important;
+        margin-top: 6px !important;
+      }
+      code {
+        background: #f1f5f9 !important;
+        color: #1e1b4b !important;
+        border: 1px solid #e2e8f0 !important;
+      }
+    }
+
 
 
   </style>
@@ -7228,6 +7341,10 @@ def bfs(G, s):
         <h1 class="hero-title">Ringkasan Rumus Matematika Diskrit</h1>
         <p class="hero-desc">Rangkuman super lengkap dari Bab 1 sampai Bab 19: Himpunan, Sifat Relasi, Fungsi &amp;
           Invers, Hukum Logika &amp; De Morgan, Kuantor, Permutasi, Kombinasi, Pohon, Graf, Kompleksitas, Peluang Bayes, hingga Otomata!</p>
+        <div class="no-print" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;">
+          <button type="button" class="btn btn-primary" id="printRumusPdfBtn">🖨️ Cetak / Simpan PDF Rumus (24 Kartu)</button>
+          <button type="button" class="btn btn-secondary" id="printAllSummaryPdfBtn">📚 Cetak / Simpan PDF Ringkasan Lengkap (Bab 1–19 + Rumus)</button>
+        </div>
       </section>
 
       <!-- MODE FLASHCARD HAFALAN CEPAT (FLIP CARD) -->
@@ -15898,6 +16015,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
       loadG6();
+    })();
+
+    // ---------------- CETAK / SIMPAN PDF (RINGKASAN & RUMUS) ----------------
+    (function initPdfPrintControls() {
+      const cleanup = () => {
+        document.body.classList.remove('print-mode-rumus', 'print-mode-all');
+      };
+      window.addEventListener('afterprint', cleanup);
+
+      window.triggerPdfPrint = (mode = 'current') => {
+        cleanup();
+        if (mode === 'rumus') {
+          document.body.classList.add('print-mode-rumus');
+        } else if (mode === 'all') {
+          document.body.classList.add('print-mode-all');
+        }
+        setTimeout(() => {
+          window.print();
+          setTimeout(cleanup, 1200);
+        }, 60);
+      };
+
+      document.getElementById('printRumusPdfBtn')?.addEventListener('click', () => {
+        if (typeof showToast === 'function') showToast('Menyiapkan PDF 24 Kartu Rumus — pilih "Save as PDF" 🖨️');
+        window.triggerPdfPrint('rumus');
+      });
+
+      document.getElementById('printAllSummaryPdfBtn')?.addEventListener('click', () => {
+        if (typeof showToast === 'function') showToast('Menyiapkan PDF Ringkasan Bab 1–19 + Rumus — pilih "Save as PDF" 📚');
+        window.triggerPdfPrint('all');
+      });
+
+      // Tambahkan tombol "Cetak PDF Bab Ini" di setiap footer sub-bab (Bab 1–19)
+      document.querySelectorAll('.chapter-footer-nav').forEach((nav) => {
+        if (nav.querySelector('.print-chapter-pdf-btn')) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-secondary print-chapter-pdf-btn';
+        btn.textContent = '🖨️ Cetak PDF Bab Ini';
+        btn.addEventListener('click', () => {
+          if (typeof showToast === 'function') showToast('Menyiapkan PDF bab ini — pilih "Save as PDF" 🖨️');
+          window.triggerPdfPrint('current');
+        });
+        nav.appendChild(btn);
+      });
     })();
 
     // ---------------- SUBTLE CURSOR PARALLAX (LIGHTWEIGHT VANILLA JS) ----------------
